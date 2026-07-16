@@ -1,0 +1,6 @@
+{
+  "name": "CCL Employee Health Monitoring Portal",
+  "description": "A healthcare management system for CCL Gandhinagar Hospital to manage health records of coal mine employees.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
