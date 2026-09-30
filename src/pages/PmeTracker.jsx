@@ -271,34 +271,56 @@ export const PmeTracker = () => {
   const handleSendReminder = async (emp) => {
     const phone = emp.phone || emp.contactNo;
     if (!phone || !phone.trim()) {
-      showToast("Phone number not available", "error");
+      showToast("Phone number not available for this employee", "error");
       return;
     }
 
     setSendingEmployeeId(emp.id);
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/sms/send-reminder`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          phone: phone.trim(),
-          employeeName: emp.name
-        })
-      });
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
+      let response;
+      try {
+        response = await fetch(`${API_BASE_URL}/api/sms/send-reminder`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            phone: phone.trim(),
+            employeeName: emp.name
+          })
+        });
+      } catch (netErr) {
+        console.error("Network or Backend Connection Error:", netErr);
+        showToast("❌ Unable to connect to backend server (Port 5001). Please check if backend server is running.", "error");
+        return;
+      }
 
       const data = await response.json();
 
       if (response.ok && data.success) {
         showToast(`✅ WhatsApp reminder sent successfully to ${emp.name}`, "success");
+        try {
+          await supabase.from('reminder_logs').insert([
+            {
+              employeeId: emp.employeeId,
+              employeeName: emp.name,
+              type: 'WhatsApp',
+              sentAt: new Date().toISOString(),
+              status: 'Sent'
+            }
+          ]);
+        } catch (dbErr) {
+          console.warn("Reminder log write to Supabase failed:", dbErr);
+        }
       } else {
         console.error("Backend Error:", data);
-        showToast("❌ Failed to send WhatsApp reminder", "error");
+        const errMsg = data.message || "Failed to send WhatsApp reminder";
+        showToast(`❌ ${errMsg}`, "error");
       }
     } catch (err) {
-      console.error("Network or Backend Connection Error:", err);
-      showToast("❌ Failed to send WhatsApp reminder", "error");
+      console.error("Unexpected Error in handleSendReminder:", err);
+      showToast(`❌ ${err.message || 'An unexpected error occurred'}`, "error");
     } finally {
       setSendingEmployeeId(null);
     }
@@ -315,7 +337,31 @@ export const PmeTracker = () => {
     try {
       const selectedTypes = [];
       if (reminderTypeEmail) selectedTypes.push("Email");
-      if (reminderTypeSms) selectedTypes.push("SMS");
+      if (reminderTypeSms) selectedTypes.push("WhatsApp");
+
+      const phone = reminderEmployee?.phone || reminderEmployee?.contactNo;
+      let twilioSuccess = false;
+
+      if (reminderTypeSms) {
+        if (!phone || !phone.trim()) {
+          throw new Error("Employee phone number is missing");
+        }
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
+        const response = await fetch(`${API_BASE_URL}/api/sms/send-reminder`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            phone: phone.trim(),
+            employeeName: reminderEmployee.name
+          })
+        });
+        const data = await response.json();
+        if (response.ok && data.success) {
+          twilioSuccess = true;
+        } else {
+          throw new Error(data.message || "Twilio WhatsApp delivery failed");
+        }
+      }
 
       // Insert log into reminder_logs
       const { error: logErr } = await supabase
@@ -326,19 +372,19 @@ export const PmeTracker = () => {
             employeeName: reminderEmployee.name,
             type: selectedTypes.join(', '),
             sentAt: new Date().toISOString(),
-            status: 'Queued'
+            status: twilioSuccess ? 'Sent' : 'Queued'
           }
         ]);
 
       if (logErr) {
-        console.warn("Failed to write reminder log. reminder_logs table might be missing.", logErr);
+        console.warn("Failed to write reminder log.", logErr);
       }
 
-      showToast("✓ Reminder queued successfully");
+      showToast(`✅ WhatsApp reminder sent to ${reminderEmployee.name}`, "success");
       setShowReminderModal(false);
     } catch (err) {
       console.error("Failed to send reminder:", err);
-      showToast("Failed to queue reminder: " + err.message, "error");
+      showToast("❌ Failed: " + err.message, "error");
     } finally {
       setIsSendingReminder(false);
     }
@@ -367,6 +413,7 @@ export const PmeTracker = () => {
 
     let successCount = 0;
     let failedCount = 0;
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
 
     for (let i = 0; i < targets.length; i++) {
       const emp = targets[i];
@@ -383,7 +430,7 @@ export const PmeTracker = () => {
       }
 
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/sms/send-reminder`, {
+        const response = await fetch(`${API_BASE_URL}/api/sms/send-reminder`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json"

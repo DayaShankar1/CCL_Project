@@ -1,13 +1,17 @@
 const twilio = require("twilio");
 
-const client = twilio(
-    process.env.TWILIO_ACCOUNT_SID,
-    process.env.TWILIO_AUTH_TOKEN
-);
+const getClient = () => {
+    const sid = process.env.TWILIO_ACCOUNT_SID;
+    const token = process.env.TWILIO_AUTH_TOKEN;
+    if (!sid || !token) {
+        throw new Error("Twilio Account SID or Auth Token is missing in environment variables.");
+    }
+    return twilio(sid, token);
+};
 
 const formatPhoneNumber = (phone) => {
-    // Remove all whitespace and non-digit characters except '+'
-    let cleaned = phone.replace(/[^\d+]/g, "");
+    if (!phone) return "";
+    let cleaned = String(phone).replace(/[^\d+]/g, "");
     
     // If it doesn't start with '+', normalize it
     if (!cleaned.startsWith("+")) {
@@ -29,9 +33,22 @@ const formatPhoneNumber = (phone) => {
 
 const sendWhatsApp = async (to, employeeName) => {
     try {
+        const client = getClient();
         const formattedTo = formatPhoneNumber(to);
+        if (!formattedTo) {
+            throw new Error("Invalid or empty phone number provided.");
+        }
+
+        let fromNumber = process.env.TWILIO_WHATSAPP_NUMBER || "";
+        if (!fromNumber) {
+            throw new Error("TWILIO_WHATSAPP_NUMBER is missing in environment variables.");
+        }
+        if (!fromNumber.startsWith("whatsapp:")) {
+            fromNumber = `whatsapp:${fromNumber}`;
+        }
+
         const message = await client.messages.create({
-            from: process.env.TWILIO_WHATSAPP_NUMBER,
+            from: fromNumber,
             to: `whatsapp:${formattedTo}`,
             body: `🏥 CCL Gandhinagar Hospital
 
@@ -47,6 +64,7 @@ CCL Medical Department`
 
         return message.sid;
     } catch (err) {
+        console.error("Twilio sendWhatsApp Error:", err);
         throw err;
     }
 };

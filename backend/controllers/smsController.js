@@ -20,11 +20,13 @@ const sendReminder = async (req, res) => {
         });
 
     } catch (err) {
-        console.error(err);
+        console.error("SMS Controller Error:", err);
 
         res.status(500).json({
             success: false,
-            message: err.message
+            message: err.message || "Failed to send WhatsApp message",
+            code: err.code || null,
+            moreInfo: err.moreInfo || null
         });
     }
 };
